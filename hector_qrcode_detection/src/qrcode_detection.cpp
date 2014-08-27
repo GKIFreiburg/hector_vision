@@ -43,7 +43,7 @@ qrcode_detection_impl::qrcode_detection_impl(ros::NodeHandle nh, ros::NodeHandle
   , listener_(0)
 {
   scanner_ = new zbar::ImageScanner;
-  scanner_->set_config(ZBAR_QRCODE, ZBAR_CFG_ENABLE, 1);
+  scanner_->set_config(ZBAR_CODE39, ZBAR_CFG_ENABLE, 1);
 
   rotation_image_size_ = 2;
   priv_nh.getParam("rotation_source_frame", rotation_source_frame_id_);
@@ -74,7 +74,7 @@ void qrcode_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& imag
   cv::Mat rotation_matrix = cv::Mat::eye(2,3,CV_32FC1);
   double rotation_angle = 0.0;
 
-  ROS_DEBUG("Received new image with %u x %u pixels.", image->width, image->height);
+  ROS_INFO_THROTTLE(1.0, "Received new image with %u x %u pixels.", image->width, image->height);
 
   if (!rotation_target_frame_id_.empty() && listener_) {
     tf::StampedTransform transform;
@@ -146,7 +146,7 @@ void qrcode_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& imag
   percept.info.class_support = 1.0;
 
   for(Image::SymbolIterator symbol = zbar.symbol_begin(); symbol != zbar.symbol_end(); ++symbol) {
-    ROS_DEBUG_STREAM("Decoded " << symbol->get_type_name() << " symbol \"" << symbol->get_data() << '"');
+    ROS_INFO_STREAM("Decoded " << symbol->get_type_name() << " symbol \"" << symbol->get_data() << '"');
 
     // percept.info.object_id = ros::this_node::getName() + "/" + symbol->get_data();
     //percept.info.object_id = symbol->get_data();
