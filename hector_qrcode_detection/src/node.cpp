@@ -34,7 +34,11 @@ int main(int argc, char **argv)
 {
   ros::init(argc, argv, ROS_PACKAGE_NAME);
   qrcode_detection_impl detector(ros::NodeHandle(), ros::NodeHandle("~"));
-  ros::spin();
+  ros::Rate rate(5);
+  while(ros::ok()) {
+      ros::spinOnce();
+      rate.sleep();
+  }
   return 0;
 }
 

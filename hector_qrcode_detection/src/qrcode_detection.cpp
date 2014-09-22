@@ -52,7 +52,7 @@ qrcode_detection_impl::qrcode_detection_impl(ros::NodeHandle nh, ros::NodeHandle
 
   percept_publisher_ = nh_.advertise<hector_worldmodel_msgs::ImagePercept>("image_percept", 10);
   qrcode_image_publisher_ = image_transport_.advertiseCamera("image/qrcode", 10);
-  camera_subscriber_ = image_transport_.subscribeCamera("image", 10, &qrcode_detection_impl::imageCallback, this);
+  camera_subscriber_ = image_transport_.subscribeCamera("image", 2, &qrcode_detection_impl::imageCallback, this);
 
   if (!rotation_target_frame_id_.empty()) {
     listener_ = new tf::TransformListener();
@@ -74,7 +74,7 @@ void qrcode_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& imag
   cv::Mat rotation_matrix = cv::Mat::eye(2,3,CV_32FC1);
   double rotation_angle = 0.0;
 
-  ROS_INFO_THROTTLE(1.0, "Received new image with %u x %u pixels.", image->width, image->height);
+  ROS_DEBUG_THROTTLE(1.0, "Received new image with %u x %u pixels.", image->width, image->height);
 
   if (!rotation_target_frame_id_.empty() && listener_) {
     tf::StampedTransform transform;
@@ -146,7 +146,7 @@ void qrcode_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& imag
   percept.info.class_support = 1.0;
 
   for(Image::SymbolIterator symbol = zbar.symbol_begin(); symbol != zbar.symbol_end(); ++symbol) {
-    ROS_INFO_STREAM("Decoded " << symbol->get_type_name() << " symbol \"" << symbol->get_data() << '"');
+    ROS_INFO_STREAM_THROTTLE(1.0, "Decoded " << symbol->get_type_name() << " symbol \"" << symbol->get_data() << '"');
 
     // percept.info.object_id = ros::this_node::getName() + "/" + symbol->get_data();
     //percept.info.object_id = symbol->get_data();
@@ -154,7 +154,8 @@ void qrcode_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& imag
     percept.info.name = symbol->get_data();
 
     if (symbol->get_location_size() != 4) {
-      ROS_WARN("Could not get symbol locations(location_size != 4)");
+      //ROS_WARN_THROTTLE(1.0, "Could not get symbol locations(location_size != 4)");
+      percept_publisher_.publish(percept);
       continue;
     }
 
