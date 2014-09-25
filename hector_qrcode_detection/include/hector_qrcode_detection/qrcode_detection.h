@@ -64,9 +64,11 @@ private:
 
   zbar::ImageScanner *scanner_;
 
-  tf::TransformListener *listener_;
-  std::string rotation_source_frame_id_;
-  std::string rotation_target_frame_id_;
+  bool gui_;
+
+  double rotation_min_;
+  double rotation_max_;
+  double rotation_step_;
   int rotation_image_size_;
 };
 

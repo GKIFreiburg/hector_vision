@@ -30,33 +30,39 @@
 #include <hector_worldmodel_msgs/ImagePercept.h>
 
 #include <cv.h>
+#include <highgui.h>
 #include <cv_bridge/cv_bridge.h>
 #include <zbar.h>
 
 using namespace zbar;
+
+std::string INPUT_IMAGE = "Input Image";
+std::string TRANSFORMED_IMAGE = "Transformed Image";
 
 namespace hector_qrcode_detection {
 
 qrcode_detection_impl::qrcode_detection_impl(ros::NodeHandle nh, ros::NodeHandle priv_nh)
   : nh_(nh)
   , image_transport_(nh_)
-  , listener_(0)
+  , gui_(false)
 {
   scanner_ = new zbar::ImageScanner;
   scanner_->set_config(ZBAR_CODE39, ZBAR_CFG_ENABLE, 1);
 
   rotation_image_size_ = 2;
-  priv_nh.getParam("rotation_source_frame", rotation_source_frame_id_);
-  priv_nh.getParam("rotation_target_frame", rotation_target_frame_id_);
-  priv_nh.getParam("rotation_image_size", rotation_image_size_);
+  priv_nh.param("rotation_min", rotation_min_, 0.0);
+  priv_nh.param("rotation_max", rotation_max_, 0.8);
+  priv_nh.param("rotation_step", rotation_step_, 0.78);
 
   percept_publisher_ = nh_.advertise<hector_worldmodel_msgs::ImagePercept>("image_percept", 10);
   qrcode_image_publisher_ = image_transport_.advertiseCamera("image/qrcode", 10);
   camera_subscriber_ = image_transport_.subscribeCamera("image", 2, &qrcode_detection_impl::imageCallback, this);
 
-  if (!rotation_target_frame_id_.empty()) {
-    listener_ = new tf::TransformListener();
-    rotated_image_publisher_ = image_transport_.advertiseCamera("image/rotated", 10);
+  //rotated_image_publisher_ = image_transport_.advertiseCamera("image/rotated", 10);
+
+  if(gui_) {
+      cv::namedWindow(INPUT_IMAGE, CV_WINDOW_AUTOSIZE);
+      cv::namedWindow(TRANSFORMED_IMAGE, CV_WINDOW_AUTOSIZE);
   }
 
   ROS_INFO("Successfully initialized the zbar qrcode detector for image %s", camera_subscriber_.getTopic().c_str());
@@ -64,75 +70,69 @@ qrcode_detection_impl::qrcode_detection_impl(ros::NodeHandle nh, ros::NodeHandle
 
 qrcode_detection_impl::~qrcode_detection_impl()
 {
-  delete listener_;
 }
 
 void qrcode_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& image, const sensor_msgs::CameraInfoConstPtr& camera_info)
 {
   cv_bridge::CvImageConstPtr cv_image;
   cv_image = cv_bridge::toCvShare(image, "mono8");
+  
+  if(gui_) {
+      cv::imshow(INPUT_IMAGE, cv_image->image);
+      cv::waitKey(1);
+  }
+
   cv::Mat rotation_matrix = cv::Mat::eye(2,3,CV_32FC1);
-  double rotation_angle = 0.0;
 
   ROS_DEBUG_THROTTLE(1.0, "Received new image with %u x %u pixels.", image->width, image->height);
 
-  if (!rotation_target_frame_id_.empty() && listener_) {
-    tf::StampedTransform transform;
-    std::string source_frame_id_ = rotation_source_frame_id_.empty() ? image->header.frame_id : rotation_source_frame_id_;
-    try
-    {
-      listener_->waitForTransform(rotation_target_frame_id_, source_frame_id_, image->header.stamp, ros::Duration(1.0));
-      listener_->lookupTransform(rotation_target_frame_id_, source_frame_id_, image->header.stamp, transform);
-    } catch (tf::TransformException& e) {
-      ROS_ERROR("%s", e.what());
-      return;
-    }
+  if (rotation_min_ != rotation_max_) {
+      for(double rotation_angle = rotation_min_; rotation_angle <= rotation_max_; rotation_angle += rotation_step_) {
+          // Transform the image.
+          try
+          {
+              cv::Mat in_image = cv_image->image;
 
-    // calculate rotation angle
-    tfScalar roll, pitch, yaw;
-    transform.getBasis().getRPY(roll, pitch, yaw);
-    rotation_angle = -roll;
+              // Compute the output image size.
+              int max_dim = in_image.cols > in_image.rows ? in_image.cols : in_image.rows;
+              int min_dim = in_image.cols < in_image.rows ? in_image.cols : in_image.rows;
+              int noblack_dim = min_dim / sqrt(2);
+              int diag_dim = sqrt(in_image.cols*in_image.cols + in_image.rows*in_image.rows);
+              int out_size;
+              int candidates[] = { noblack_dim, min_dim, max_dim, diag_dim, diag_dim }; // diag_dim repeated to simplify limit case.
+              int step = rotation_image_size_;
+              out_size = candidates[step] + (candidates[step + 1] - candidates[step]) * (rotation_image_size_ - step);
+              //ROS_INFO("out_size: %d", out_size);
 
-    // Transform the image.
-    try
-    {
-      cv::Mat in_image = cv_image->image;
+              // Compute the rotation matrix.
+              rotation_matrix = cv::getRotationMatrix2D(cv::Point2f(in_image.cols / 2.0, in_image.rows / 2.0), 180 * rotation_angle / M_PI, 1.0);
+              rotation_matrix.at<double>(0, 2) += (out_size - in_image.cols) / 2.0;
+              rotation_matrix.at<double>(1, 2) += (out_size - in_image.rows) / 2.0;
 
-      // Compute the output image size.
-      int max_dim = in_image.cols > in_image.rows ? in_image.cols : in_image.rows;
-      int min_dim = in_image.cols < in_image.rows ? in_image.cols : in_image.rows;
-      int noblack_dim = min_dim / sqrt(2);
-      int diag_dim = sqrt(in_image.cols*in_image.cols + in_image.rows*in_image.rows);
-      int out_size;
-      int candidates[] = { noblack_dim, min_dim, max_dim, diag_dim, diag_dim }; // diag_dim repeated to simplify limit case.
-      int step = rotation_image_size_;
-      out_size = candidates[step] + (candidates[step + 1] - candidates[step]) * (rotation_image_size_ - step);
-      //ROS_INFO("out_size: %d", out_size);
+              // Do the rotation
+              cv_bridge::CvImage *temp = new cv_bridge::CvImage(*cv_image);
+              cv::warpAffine(in_image, temp->image, rotation_matrix, cv::Size(out_size, out_size));
+              cv_image.reset(temp);
+              if(detectAnPublish(cv_image, camera_info)) {  // stop on first cand
+                  break;
+              }
 
-      // Compute the rotation matrix.
-      rotation_matrix = cv::getRotationMatrix2D(cv::Point2f(in_image.cols / 2.0, in_image.rows / 2.0), 180 * rotation_angle / M_PI, 1);
-      rotation_matrix.at<double>(0, 2) += (out_size - in_image.cols) / 2.0;
-      rotation_matrix.at<double>(1, 2) += (out_size - in_image.rows) / 2.0;
-
-      // Do the rotation
-      cv_bridge::CvImage *temp = new cv_bridge::CvImage(*cv_image);
-      cv::warpAffine(in_image, temp->image, rotation_matrix, cv::Size(out_size, out_size));
-      cv_image.reset(temp);
-
-      if (rotated_image_publisher_.getNumSubscribers() > 0) {
-        sensor_msgs::Image rotated_image;
-        cv_image->toImageMsg(rotated_image);
-        rotated_image_publisher_.publish(rotated_image, *camera_info);
+              if (rotated_image_publisher_.getNumSubscribers() > 0) {
+                  sensor_msgs::Image rotated_image;
+                  cv_image->toImageMsg(rotated_image);
+                  rotated_image_publisher_.publish(rotated_image, *camera_info);
+              }
+          }
+          catch (cv::Exception &e)
+          {
+              ROS_ERROR("Image processing error: %s %s %s %i", e.err.c_str(), e.func.c_str(), e.file.c_str(), e.line);
+              return;
+          }
       }
-    }
-    catch (cv::Exception &e)
-    {
-      ROS_ERROR("Image processing error: %s %s %s %i", e.err.c_str(), e.func.c_str(), e.file.c_str(), e.line);
-      return;
-    }
   }
-
-  detectAnPublish(cv_image, camera_info);
+  else {
+      detectAnPublish(cv_image, camera_info);
+  }
 }
 
 bool qrcode_detection_impl::detectAnPublish(const cv_bridge::CvImageConstPtr & cv_image, const sensor_msgs::CameraInfoConstPtr& camera_info)
@@ -150,13 +150,29 @@ bool qrcode_detection_impl::detectAnPublish(const cv_bridge::CvImageConstPtr & c
   percept.info.class_id = "qrcode";
   percept.info.class_support = 1.0;
 
+  cv::Mat outDisplay;
+  if(gui_)
+    cv::cvtColor(cv_image->image, outDisplay, CV_GRAY2RGB);
+
+  bool symbol_found = false;
   for(Image::SymbolIterator symbol = zbar.symbol_begin(); symbol != zbar.symbol_end(); ++symbol) {
+    symbol_found = true;
+
     ROS_INFO_STREAM_THROTTLE(1.0, "Decoded " << symbol->get_type_name() << " symbol \"" << symbol->get_data() << '"');
 
     // percept.info.object_id = ros::this_node::getName() + "/" + symbol->get_data();
     //percept.info.object_id = symbol->get_data();
     percept.info.object_support = 1.0;
     percept.info.name = symbol->get_data();
+
+    if(gui_) {
+        for(int i = 0; i < symbol->get_location_size(); ++i) {
+            cv::Point pt(symbol->get_location_x(i), symbol->get_location_y(i));
+            cv::circle(outDisplay, pt, 5, cv::Scalar(1.0, 255.0, 1.0));
+        }
+        cv::imshow(TRANSFORMED_IMAGE, outDisplay);
+        cv::waitKey(1);
+    }
 
     if (symbol->get_location_size() != 4) {
       //ROS_WARN_THROTTLE(1.0, "Could not get symbol locations(location_size != 4)");
@@ -210,6 +226,7 @@ bool qrcode_detection_impl::detectAnPublish(const cv_bridge::CvImageConstPtr & c
 
   // clean up
   zbar.set_data(NULL, 0);
+  return symbol_found;
 }
 
 } // namespace hector_qrcode_detection
