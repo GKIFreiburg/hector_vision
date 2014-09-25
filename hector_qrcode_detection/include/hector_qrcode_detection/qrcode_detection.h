@@ -32,6 +32,8 @@
 #include <ros/ros.h>
 #include <image_transport/image_transport.h>
 #include <tf/transform_listener.h>
+#include <cv.h>
+#include <cv_bridge/cv_bridge.h>
 
 namespace zbar {
   class ImageScanner;
@@ -46,6 +48,10 @@ public:
 
 protected:
   void imageCallback(const sensor_msgs::ImageConstPtr& image, const sensor_msgs::CameraInfoConstPtr& camera_info);
+
+  /// Detect barcodes and publish percepts if found.
+  /// \Return true if at least one barcode was found in image.
+  bool detectAnPublish(const cv_bridge::CvImageConstPtr & image, const sensor_msgs::CameraInfoConstPtr& camera_info);
 
 private:
   ros::NodeHandle nh_;

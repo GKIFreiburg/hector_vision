@@ -132,6 +132,11 @@ void qrcode_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& imag
     }
   }
 
+  detectAnPublish(cv_image, camera_info);
+}
+
+bool qrcode_detection_impl::detectAnPublish(const cv_bridge::CvImageConstPtr & cv_image, const sensor_msgs::CameraInfoConstPtr& camera_info)
+{
   // wrap image data
   Image zbar(cv_image->image.cols, cv_image->image.rows, "Y800", cv_image->image.data, cv_image->image.cols * cv_image->image.rows);
 
@@ -140,7 +145,7 @@ void qrcode_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& imag
 
   // extract results
   hector_worldmodel_msgs::ImagePercept percept;
-  percept.header = image->header;
+  percept.header = cv_image->header;
   percept.camera_info = *camera_info;
   percept.info.class_id = "qrcode";
   percept.info.class_support = 1.0;
@@ -172,11 +177,11 @@ void qrcode_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& imag
     cv::Vec3f left_top_corner(min_x, min_y, 1.0f);
     cv::Vec3f right_bottom_corner(max_x, max_y, 1.0f);
 
-    // TODO: calculate the inverse transformation of rotation_matrix
-    if (rotation_angle != 0.0) {
-      ROS_ERROR("Non-zero rotations are currently not supported!");
-      continue;
-    }
+    //// TODO: calculate the inverse transformation of rotation_matrix
+    //if (rotation_angle != 0.0) {
+    //  ROS_ERROR("Non-zero rotations are currently not supported!");
+    //  continue;
+    //}
 
     percept.x      = (left_top_corner(0) + right_bottom_corner(0)) / 2;
     percept.y      = (left_top_corner(1) + right_bottom_corner(1)) / 2;
