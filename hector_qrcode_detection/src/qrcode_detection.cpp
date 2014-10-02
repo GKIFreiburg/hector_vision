@@ -86,12 +86,14 @@ bool qrcode_detection_impl::enable_detection(std_srvs::Empty::Request &, std_srv
 {
     if(!camera_subscriber_)
         camera_subscriber_ = image_transport_.subscribeCamera("image", 2, &qrcode_detection_impl::imageCallback, this);
+    ROS_INFO("Enabling barcode detection.");
     return true;
 }
 
 bool qrcode_detection_impl::disable_detection(std_srvs::Empty::Request &, std_srvs::Empty::Response &)
 {
     camera_subscriber_.shutdown();
+    ROS_INFO("Disabling barcode detection.");
     return true;
 }
 
