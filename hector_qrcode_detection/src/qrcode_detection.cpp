@@ -53,6 +53,7 @@ qrcode_detection_impl::qrcode_detection_impl(ros::NodeHandle nh, ros::NodeHandle
   priv_nh.param("rotation_min", rotation_min_, 0.0);
   priv_nh.param("rotation_max", rotation_max_, 0.8);
   priv_nh.param("rotation_step", rotation_step_, 0.78);
+  priv_nh.param("gui", gui_, gui_);
 
   percept_publisher_ = nh_.advertise<hector_worldmodel_msgs::ImagePercept>("image_percept", 10);
   qrcode_image_publisher_ = image_transport_.advertiseCamera("image/qrcode", 10);
