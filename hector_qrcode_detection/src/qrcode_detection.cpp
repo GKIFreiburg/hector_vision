@@ -54,10 +54,19 @@ qrcode_detection_impl::qrcode_detection_impl(ros::NodeHandle nh, ros::NodeHandle
   priv_nh.param("rotation_max", rotation_max_, 0.8);
   priv_nh.param("rotation_step", rotation_step_, 0.78);
   priv_nh.param("gui", gui_, gui_);
+  bool start_enabled = false;
+  priv_nh.param("start_enabled", start_enabled, start_enabled);
+
+  srv_enable_ = priv_nh.advertiseService("enable_detection",
+          &qrcode_detection_impl::enable_detection, this);
+  srv_disable_ = priv_nh.advertiseService("disable_detection",
+          &qrcode_detection_impl::disable_detection, this);
 
   percept_publisher_ = nh_.advertise<hector_worldmodel_msgs::ImagePercept>("image_percept", 10);
   qrcode_image_publisher_ = image_transport_.advertiseCamera("image/qrcode", 10);
-  camera_subscriber_ = image_transport_.subscribeCamera("image", 2, &qrcode_detection_impl::imageCallback, this);
+
+  if(start_enabled)
+      camera_subscriber_ = image_transport_.subscribeCamera("image", 2, &qrcode_detection_impl::imageCallback, this);
 
   //rotated_image_publisher_ = image_transport_.advertiseCamera("image/rotated", 10);
 
@@ -71,6 +80,19 @@ qrcode_detection_impl::qrcode_detection_impl(ros::NodeHandle nh, ros::NodeHandle
 
 qrcode_detection_impl::~qrcode_detection_impl()
 {
+}
+
+bool qrcode_detection_impl::enable_detection(std_srvs::Empty::Request &, std_srvs::Empty::Response &)
+{
+    if(!camera_subscriber_)
+        camera_subscriber_ = image_transport_.subscribeCamera("image", 2, &qrcode_detection_impl::imageCallback, this);
+    return true;
+}
+
+bool qrcode_detection_impl::disable_detection(std_srvs::Empty::Request &, std_srvs::Empty::Response &)
+{
+    camera_subscriber_.shutdown();
+    return true;
 }
 
 void qrcode_detection_impl::imageCallback(const sensor_msgs::ImageConstPtr& image, const sensor_msgs::CameraInfoConstPtr& camera_info)

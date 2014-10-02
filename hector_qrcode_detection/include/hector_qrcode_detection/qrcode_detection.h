@@ -34,6 +34,7 @@
 #include <tf/transform_listener.h>
 #include <cv.h>
 #include <cv_bridge/cv_bridge.h>
+#include <std_srvs/Empty.h>
 
 namespace zbar {
   class ImageScanner;
@@ -47,6 +48,9 @@ public:
   ~qrcode_detection_impl();
 
 protected:
+  bool enable_detection(std_srvs::Empty::Request &, std_srvs::Empty::Response &);
+  bool disable_detection(std_srvs::Empty::Request &, std_srvs::Empty::Response &);
+
   void imageCallback(const sensor_msgs::ImageConstPtr& image, const sensor_msgs::CameraInfoConstPtr& camera_info);
 
   /// Detect barcodes and publish percepts if found.
@@ -59,6 +63,9 @@ private:
   image_transport::CameraSubscriber camera_subscriber_;
   image_transport::CameraPublisher rotated_image_publisher_;
   image_transport::CameraPublisher qrcode_image_publisher_;
+
+  ros::ServiceServer srv_enable_;
+  ros::ServiceServer srv_disable_;
 
   ros::Publisher percept_publisher_;
 
